@@ -6,7 +6,8 @@
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "fs": "^0.0.1-security",
-    "markdown-pdf": "^11.0.0",
-    "path": "^0.12.7"
+    "markdown-it": "^14.1.0",
+    "path": "^0.12.7",
+    "pdfkit": "^0.17.2"
   }
 }

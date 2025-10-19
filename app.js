@@ -4,14 +4,16 @@ import path from "path";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import express from "express";
 import cors from "cors";
-import markdownpdf from "markdown-pdf";
+import PDFDocument from "pdfkit";
+import MarkdownIt from "markdown-it";
+
+dotenv.config();
 
 const app = express();
 app.use(express.json());
 app.use(cors());
 
-dotenv.config(); // carrega GEMINI_API_KEY do .env
-
+// Carrega GEMINI_API_KEY do .env
 const apiKey = process.env.GEMINI_API_KEY;
 if (!apiKey) {
   console.error("❌ GEMINI_API_KEY não encontrada no .env");
@@ -20,27 +22,30 @@ if (!apiKey) {
 
 const ai = new GoogleGenerativeAI(apiKey);
 
-// Função para converter Markdown em PDF usando markdown-pdf
+// Função para converter Markdown em PDF usando pdfkit
 async function mdParaPDF(mdText, outputPath) {
-  const tmpMD = path.join(path.dirname(outputPath), "tmp.md");
-  fs.writeFileSync(tmpMD, mdText, { encoding: "utf8" });
+  const md = new MarkdownIt();
+  const html = md.render(mdText);
 
   return new Promise((resolve, reject) => {
-    markdownpdf({
-      paperFormat: "A4",
-      cssPath: path.join(process.cwd(), "estilos.css"), // opcional para CSS profissional
-      highlightCss: "pre {background-color: #f5f5f5; padding: 4px; border-radius: 4px;}"
-    })
-      .from(tmpMD)
-      .to(outputPath, (err) => {
-        fs.unlinkSync(tmpMD); // remove o markdown temporário
-        if (err) reject(err);
-        else resolve();
-      });
+    const doc = new PDFDocument({ margin: 50 });
+    const stream = fs.createWriteStream(outputPath);
+
+    doc.pipe(stream);
+
+    // Remove tags HTML e escreve texto simples (Markdown básico)
+    doc.font("Helvetica").fontSize(12).text(html.replace(/<[^>]+>/g, ""), {
+      align: "left",
+    });
+
+    doc.end();
+
+    stream.on("finish", resolve);
+    stream.on("error", reject);
   });
 }
 
-// Função principal — agora retorna o caminho do PDF
+// Função principal — gera conteúdo usando AI e converte em PDF
 async function gerarDocumento(conteudoDesejado, comoGerar) {
   const model = ai.getGenerativeModel({ model: "gemini-2.0-flash" });
   const prompt = `${conteudoDesejado}. ${comoGerar}`;
@@ -89,7 +94,7 @@ app.post("/", async (req, res) => {
 });
 
 // --------------------
-// Rota para servir o PDF gerado
+// Rota GET para servir o PDF gerado
 // --------------------
 app.get("/download/:arquivo", (req, res) => {
   const arquivo = req.params.arquivo;
@@ -99,7 +104,7 @@ app.get("/download/:arquivo", (req, res) => {
   if (fs.existsSync(caminhoArquivo)) {
     res.download(caminhoArquivo, (err) => {
       if (!err) {
-        // Remove após envio
+        // Remove o arquivo após envio
         fs.unlink(caminhoArquivo, () => {});
       }
     });

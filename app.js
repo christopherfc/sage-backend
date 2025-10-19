@@ -47,7 +47,7 @@ async function gerarDocumento(conteudoDesejado, comoGerar) {
   const result = await model.generateContent(prompt);
   const textoMD = result.response.text();
 
-  const pastaDocumentos = path.join(process.cwd(), "documentos");
+  const pastaDocumentos = process.env.VERCEL ? "/tmp" : path.join(process.cwd(), "documentos");
   if (!fs.existsSync(pastaDocumentos)) fs.mkdirSync(pastaDocumentos);
 
   const nomeArquivoBase = conteudoDesejado.toLowerCase().replace(/[^a-z0-9]+/g, "_");
@@ -60,7 +60,7 @@ async function gerarDocumento(conteudoDesejado, comoGerar) {
 }
 
 // --------------------
-// Rota POST para gerar e enviar o PDF
+// Rota POST para gerar e retornar a URL do PDF
 // --------------------
 app.post("/", async (req, res) => {
   try {
@@ -73,21 +73,38 @@ app.post("/", async (req, res) => {
     console.log("🧠 Gerando documento...");
     const caminhoPDF = await gerarDocumento(prompt, comoGerar);
 
-    // Envia o PDF para o cliente como download
-    res.download(caminhoPDF, "documento.pdf", (err) => {
-      if (err) {
-        console.error("❌ Erro ao enviar o arquivo:", err);
-        res.status(500).json({ erro: "Erro ao enviar o arquivo." });
-      } else {
-        // Remove o arquivo após envio
-        fs.unlink(caminhoPDF, (erro) => {
-          if (erro) console.error("⚠️ Erro ao remover PDF temporário:", erro);
-        });
-      }
-    });
+    // Gera a URL pública de download
+    const baseUrl = process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : `http://localhost:3000`;
+
+    const nomeArquivo = path.basename(caminhoPDF);
+    const urlDownload = `${baseUrl}/download/${nomeArquivo}`;
+
+    res.json({ url: urlDownload });
   } catch (error) {
     console.error("❌ Erro na rota /:", error);
     res.status(500).json({ erro: "Erro ao gerar documento." });
+  }
+});
+
+// --------------------
+// Rota para servir o PDF gerado
+// --------------------
+app.get("/download/:arquivo", (req, res) => {
+  const arquivo = req.params.arquivo;
+  const pastaDocumentos = process.env.VERCEL ? "/tmp" : path.join(process.cwd(), "documentos");
+  const caminhoArquivo = path.join(pastaDocumentos, arquivo);
+
+  if (fs.existsSync(caminhoArquivo)) {
+    res.download(caminhoArquivo, (err) => {
+      if (!err) {
+        // Remove após envio
+        fs.unlink(caminhoArquivo, () => {});
+      }
+    });
+  } else {
+    res.status(404).json({ erro: "Arquivo não encontrado." });
   }
 });
 
